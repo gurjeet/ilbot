@@ -6,6 +6,12 @@ use Config::File;
 use Bot::BasicBot 0.81;
 use Carp qw(confess);
 
+# For IrcLog.pm
+use Cwd 'abs_path';
+use File::Basename 'dirname';
+use lib dirname( abs_path($0) ) . "/lib";
+
+
 # this is a cleaner reimplementation of ilbot, with Bot::BasicBot which 
 # in turn is based POE::* stuff
 package IrcLogBot;
@@ -18,15 +24,20 @@ use Data::Dumper;
 
     sub prepare {
         my $dbh = shift;
-        return $dbh->prepare("INSERT INTO irclog (channel, day, nick, timestamp, line) VALUES(?, ?, ?, ?, ?)");
+        return $dbh->prepare("select log_action(?, ?, ?, ?, ?)");
     }
+
     my $q = prepare($dbh);
+
     sub dbwrite {
         my ($channel, $who, $line) = @_;
         # mncharity aka putter has an IRC client that prepends some lines with
         # a BOM. Remove that:
-        $line =~ s/\A\x{ffef}//;
+        # FIXME: this special case for one client?!
+        # $line =~ s/\A\x{ffef}//;
+
         my @sql_args = ($channel, gmt_today(), $who, time, $line);
+
         if ($dbh->ping){
             $q->execute(@sql_args);
         } else {
@@ -38,6 +49,8 @@ use Data::Dumper;
 
     use base 'Bot::BasicBot';
 
+    # TODO test the 'address' paranmeter and incorporate it into 'body'
+    # (probably send email to bot's operator if the bot was addressed)
     sub said {
         my $self = shift;
         my $e = shift;
@@ -60,6 +73,7 @@ use Data::Dumper;
         return undef;
     }
 
+    # FIXME: Bot::BasicBot does not have a chanquit, what is this for?
     sub chanquit {
         my $self = shift;
         my $e = shift;
@@ -130,14 +144,16 @@ my $server = $conf->{SERVER} || "irc.freenode.net";
 my $port = $conf->{PORT} || 6667;
 my $channels = [ split m/\s+/, $conf->{CHANNEL}];
 
+my $botname = "gruotr";
+
 my $bot = IrcLogBot->new(
         server    => $server,
         port      => $port,
         channels  => $channels,
         nick      => $nick,
-        alt_nicks => ["irclogbot", "logbot"],
-        username  => "bot",
-        name      => "irc log bot, http://moritz.faui2k3.org/en/ilbot",
+        alt_nicks => [],
+        username  => $botname,
+        name      => $botname,
         charset   => "utf-8", 
         );
 $bot->run();
